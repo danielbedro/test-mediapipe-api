@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>testing hand tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #0e141d;
+      --line: #1a2533;
+      --text: #e8eef7;
+      --muted: #9fb3c8;
+      --green: #00ff6a;
+    }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .wrap { display:flex; justify-content:center; align-items:center; height:100vh; }
+    .stage { position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    video, canvas { width: 960px; height: 720px; display:block; }
+    video { transform: scaleX(-1); }  /* mirror webcam */
+    canvas { position:absolute; left:0; top:0; pointer-events:none; transform: scaleX(-1); }
+    .hud {
+      position:absolute; right:12px; bottom:12px;
+      background:var(--panel); border:1px solid var(--line);
+      border-radius:12px; padding:12px 14px; min-width:270px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      font-size:14px; color:var(--muted);
+    }
+    .hud h3 { margin:0 0 8px 0; font-size:14px; color:var(--text); }
+    .row { display:flex; justify-content:space-between; margin:4px 0; }
+    .sep { height:1px; background:var(--line); margin:8px 0; }
+    .hand-card { background:#0b121b; border:1px solid var(--line); border-radius:8px; padding:8px; margin-top:8px; color:var(--muted); }
+    .hand-title { display:flex; justify-content:space-between; margin-bottom:6px; color:var(--text); font-weight:600; }
+    .note { position:fixed; left:12px; bottom:12px; color:var(--muted); font-size:13px; }
+  </style>
+  <!-- MediaPipe Hands & utilities (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="stage">
+      <video id="video" playsinline></video>
+      <canvas id="overlay"></canvas>
+      <div class="hud" id="hud">
+        <h3>Hand Status</h3>
+        <div class="row"><span>Hands detected</span><strong id="handsCount">0</strong></div>
+        <div class="sep"></div>
+        <div id="handsPanel"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const handsCountEl = document.getElementById('handsCount');
+    const handsPanel = document.getElementById('handsPanel');
+
+    // Landmark indices (MediaPipe)
+    const IDX = {
+      WRIST: 0,
+      THUMB_CMC: 1, THUMB_MCP: 2, THUMB_IP: 3, THUMB_TIP: 4,
+      INDEX_MCP: 5, INDEX_PIP: 6, INDEX_DIP: 7, INDEX_TIP: 8,
+      MIDDLE_MCP: 9, MIDDLE_PIP: 10, MIDDLE_DIP: 11, MIDDLE_TIP: 12,
+      RING_MCP: 13, RING_PIP: 14, RING_DIP: 15, RING_TIP: 16,
+      PINKY_MCP: 17, PINKY_PIP: 18, PINKY_DIP: 19, PINKY_TIP: 20,
+    };
+
+    // Simple helpers
+    function syncCanvasSize() {
+      const w = video.videoWidth || 960;
+      const h = video.videoHeight || 720;
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w; canvas.height = h;
+      }
+    }
+    function dist3(a,b) {
+      const dx = a.x - b.x, dy = a.y - b.y, dz = (a.z||0) - (b.z||0);
+      return Math.hypot(dx, dy, dz);
+    }
+    function bbox2D(landmarks) {
+      let minX=1, minY=1, maxX=0, maxY=0;
+      for (const p of landmarks) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      return {minX, minY, maxX, maxY, w:(maxX-minX), h:(maxY-minY)};
+    }
+
+    // Draw markers & connections
+    const HAND_CONNECTIONS = [
+      [IDX.WRIST, IDX.THUMB_CMC],[IDX.THUMB_CMC,IDX.THUMB_MCP],[IDX.THUMB_MCP,IDX.THUMB_IP],[IDX.THUMB_IP,IDX.THUMB_TIP],
+      [IDX.WRIST, IDX.INDEX_MCP],[IDX.INDEX_MCP,IDX.INDEX_PIP],[IDX.INDEX_PIP,IDX.INDEX_DIP],[IDX.INDEX_DIP,IDX.INDEX_TIP],
+      [IDX.WRIST, IDX.MIDDLE_MCP],[IDX.MIDDLE_MCP,IDX.MIDDLE_PIP],[IDX.MIDDLE_PIP,IDX.MIDDLE_DIP],[IDX.MIDDLE_DIP,IDX.MIDDLE_TIP],
+      [IDX.WRIST, IDX.RING_MCP],[IDX.RING_MCP,IDX.RING_PIP],[IDX.RING_PIP,IDX.RING_DIP],[IDX.RING_DIP,IDX.RING_TIP],
+      [IDX.WRIST, IDX.PINKY_MCP],[IDX.PINKY_MCP,IDX.PINKY_PIP],[IDX.PINKY_PIP,IDX.PINKY_DIP],[IDX.PINKY_DIP,IDX.PINKY_TIP],
+    ];
+    function drawHand(landmarks) {
+      const W = canvas.width, H = canvas.height;
+      // connections
+      ctx.strokeStyle = '#00ff6a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (const [a,b] of HAND_CONNECTIONS) {
+        const p = landmarks[a], q = landmarks[b];
+        ctx.moveTo(p.x * W, p.y * H);
+        ctx.lineTo(q.x * W, q.y * H);
+      }
+      ctx.stroke();
+      // points
+      ctx.fillStyle = '#00ff6a';
+      for (const p of landmarks) {
+        ctx.beginPath();
+        ctx.arc(p.x * W, p.y * H, 4, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    // Orientation
+    function handRotationDeg(landmarks) {
+      const wrist = landmarks[IDX.WRIST];
+      const mid = landmarks[IDX.MIDDLE_MCP];
+      // angle of vector wrist->middle_mcp; screen y grows down
+      const dx = mid.x - wrist.x;
+      const dy = mid.y - wrist.y;
+      const angle = Math.atan2(-dy, dx) * 180 / Math.PI; // negative dy to use up as positive
+      return Math.round(angle);
+    }
+
+    // Count extended fingers & open/closed
+    // Heuristic: finger up = (dist wrist->tip) - (dist wrist->pip) > threshold
+    // Threshold scales with hand size (bbox diagonal).
+    function fingersUp(landmarks) {
+      const wrist = landmarks[IDX.WRIST];
+      const bb = bbox2D(landmarks);
+      const diag = Math.hypot(bb.w, bb.h);
+      const T = 0.10 * diag; // tweak as needed
+
+      function isUp(tipIndex, pipIndex) {
+        const dTip = dist3(wrist, landmarks[tipIndex]);
+        const dPip = dist3(wrist, landmarks[pipIndex]);
+        return (dTip - dPip) > T;
+      }
+      const up = {
+        thumb:  isUp(IDX.THUMB_TIP,  IDX.THUMB_IP),
+        index:  isUp(IDX.INDEX_TIP,  IDX.INDEX_PIP),
+        middle: isUp(IDX.MIDDLE_TIP, IDX.MIDDLE_PIP),
+        ring:   isUp(IDX.RING_TIP,   IDX.RING_PIP),
+        pinky:  isUp(IDX.PINKY_TIP,  IDX.PINKY_PIP),
+      };
+      up.count = ['thumb','index','middle','ring','pinky'].reduce((c,k)=>c+(up[k]?1:0),0);
+      up.open = up.count >= 3 ? 'Open' : 'Closed';
+      return up;
+    }
+
+    // HUD rendering
+    function renderHUD(handsInfo) {
+      handsCountEl.textContent = handsInfo.length;
+      handsPanel.innerHTML = '';
+      handsInfo.forEach((h, idx) => {
+        const div = document.createElement('div');
+        div.className = 'hand-card';
+        div.innerHTML = `
+          <div class="hand-title">
+            <span>Hand ${idx+1} — ${h.label}</span>
+            <span>${h.openClosed}</span>
+          </div>
+          <div class="row"><span>Rotation</span><strong>${h.rotation}°</strong></div>
+          <div class="row"><span>Fingers up</span><strong>${h.fingers}</strong></div>
+        `;
+        handsPanel.appendChild(div);
+      });
+    }
+
+    // MediaPipe Hands
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.5
+    });
+
+    hands.onResults((results) => {
+      syncCanvasSize();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const info = [];
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length) {
+        const handedness = results.multiHandedness || [];
+        results.multiHandLandmarks.forEach((lm, i) => {
+          drawHand(lm);
+          const rotation = handRotationDeg(lm);
+          const up = fingersUp(lm);
+          const label = handedness[i]?.label || 'Unknown'; // "Left" / "Right"
+          info.push({
+            label, rotation, openClosed: up.open, fingers: up.count
+          });
+        });
+      }
+      renderHUD(info);
+    });
+
+    // Start camera
+    async function init() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 960, height: 720 } });
+      video.srcObject = stream;
+      await video.play();
+      const cam = new Camera(video, {
+        onFrame: async () => { await hands.send({ image: video }); },
+        width: 960, height: 720
+      });
+      cam.start();
+    }
+    init().catch(err => {
+      console.error('Could not start camera:', err);
+      alert('Camera error: ' + err.message + '\nTry Restarting your Camera');
+    });
+  </script>
+</body>
+</html>
