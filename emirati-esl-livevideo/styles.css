@@ -1,0 +1,32 @@
+:root{
+  --bg:#0b0f14; --panel:#0e141d; --line:#1a2533; --text:#e8eef7; --muted:#9fb3c8; --accent:#00ff6a; --warn:#ff5656;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif}
+header{padding:14px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{margin:0;font-size:20px}
+header p{margin:6px 0 0;color:var(--muted)}
+main{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;padding:16px}
+.stage{position:relative}
+.video-wrap{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#05080c;max-width:960px}
+video,canvas{width:100%;height:auto;display:block}
+video{transform:scaleX(-1)}
+canvas{position:absolute;left:0;top:0;pointer-events:none;transform:scaleX(-1)}
+.hud{position:absolute;right:12px;bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,0.3);font-size:14px;color:var(--muted)}
+.hud .row{display:flex;justify-content:space-between;margin:3px 0}
+.controls{display:flex;flex-direction:column;gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card h3{margin:0 0 10px 0;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:6px 0}
+button,input,textarea,label.file{background:#132033;color:var(--text);border:1px solid #243145;border-radius:8px;padding:8px;outline:none}
+button{cursor:pointer}
+button.secondary{background:#1a2434}
+button.danger{background:#2a1217;border-color:#46222a}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+label.file{display:flex;align-items:center;gap:8px}
+label.file input{border:none;background:transparent;padding:0}
+textarea#output{width:100%;margin-top:8px;min-height:70px}
+.stats{margin-top:8px;color:var(--muted);font-size:13px}
+#labelCounts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.badge{background:#0b121b;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:12px}
+footer{padding:10px 16px;border-top:1px solid var(--line);color:var(--muted)}

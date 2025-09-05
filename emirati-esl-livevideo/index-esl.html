@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>emirati esl live translator MVP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css" />
+  <!-- MediaPipe Hands & utils (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Emirati Sign Language — Realtime Fingerspelling</h1>
+    <p>Webcam → MediaPipe Hands → KNN/ML → Temporal smoothing → Text buffer</p>
+  </header>
+
+  <main>
+    <section class="stage">
+      <div class="video-wrap">
+        <video id="video" playsinline></video>
+        <canvas id="overlay"></canvas>
+      </div>
+
+      <div class="hud" id="hud">
+        <div class="row"><span>Hands</span><strong id="handsCount">0</strong></div>
+        <div class="row"><span>FPS</span><strong id="fps">0</strong></div>
+        <div class="row"><span>Status</span><strong id="status">Idle</strong></div>
+        <div class="row"><span>Current</span><strong id="currentPred">—</strong></div>
+        <div class="row"><span>Stable</span><strong id="stablePred">—</strong></div>
+      </div>
+    </section>
+
+    <section class="controls">
+      <div class="card">
+        <h3>Camera & Recognition</h3>
+        <div class="grid">
+          <button id="startCam">Start Camera</button>
+          <button id="stopCam" class="secondary">Stop Camera</button>
+          <button id="startRecog">Start Recognition</button>
+          <button id="stopRecog" class="secondary">Stop Recognition</button>
+        </div>
+        <div class="grid">
+          <label>K (KNN)
+            <input id="knnK" type="number" min="1" max="15" step="1" value="5" />
+          </label>
+          <label>Window N
+            <input id="smoothN" type="number" min="3" max="25" step="1" value="9" />
+          </label>
+          <label>Commit frames
+            <input id="commitN" type="number" min="3" max="25" step="1" value="8" />
+          </label>
+          <label>Cooldown (ms)
+            <input id="cooldownMs" type="number" min="0" step="50" value="300" />
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Collect Data (ESL letters)</h3>
+        <div class="grid">
+          <label>Label
+            <input id="labelInput" placeholder="e.g., ALEF / ب / A" />
+          </label>
+          <button id="collectOne">Collect Sample</button>
+          <button id="burst2s">Record Burst (2s)</button>
+          <button id="clearLabel" class="danger">Clear Label Samples</button>
+        </div>
+        <div class="grid">
+          <button id="exportData">Export Dataset</button>
+          <label class="file">
+            Import JSON <input id="importData" type="file" accept=".json" />
+          </label>
+          <button id="clearAll" class="danger">Clear All Data</button>
+        </div>
+        <div class="stats">
+          <div><strong>Total samples:</strong> <span id="totalSamples">0</span></div>
+          <div id="labelCounts"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Decoder & Output</h3>
+        <div class="grid">
+          <label><input type="checkbox" id="arabicMode" /> Arabic letters mode</label>
+          <label><input type="checkbox" id="speakOut" /> Speak words</label>
+          <button id="backspace">Backspace</button>
+          <button id="space">Space</button>
+          <button id="clearText" class="secondary">Clear</button>
+        </div>
+        <textarea id="output" rows="3" placeholder="Recognized text appears here..."></textarea>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <small>Local-first demo. No video is uploaded. Improve by adding your own labeled samples.</small>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
